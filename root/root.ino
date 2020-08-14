@@ -44,8 +44,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length);
 IPAddress getlocalIP();
 
 PubSubClient mqttClient(wifiClient);
-
-void setup() {mqtt_server, 1883, mqttCallback, 
+//mqtt_server, 1883, mqttCallback,
+void setup() {
   Serial.begin(115200);
   Serial.println();
   Serial.println("mounting FS...");
@@ -129,8 +129,8 @@ void setup() {mqtt_server, 1883, mqttCallback,
   strcpy(mqtt_port, custom_mqtt_port.getValue());
   strcpy(dev_name, custom_dev_name.getValue());
   
-  mqttClient.setServer(mqtt_server, int(mqtt_port));
-  mqttClient.setCallback(mqttCallback);
+  //mqttClient.setServer(mqtt_server, int(mqtt_port));
+  //mqttClient.setCallback(mqttCallback);
 
   if (shouldSaveConfig) {
     Serial.println("saving config");
@@ -153,12 +153,14 @@ void setup() {mqtt_server, 1883, mqttCallback,
   }
 
  // server.begin();
+  mqttClient.setServer(mqtt_server, 1883);
+  mqttClient.setCallback(mqttCallback);
 }
 void loop(){
 
     mqttClient.loop();
     if (mqttClient.connect("painlessMeshClient")) {
-      mqttClient.publish("house/build","Ready hello world!");
+      mqttClient.publish("house","Ready hello world!");
       mqttClient.subscribe("painlessMesh/to/#");
     } 
     else{
