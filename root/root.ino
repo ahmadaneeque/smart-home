@@ -3,16 +3,26 @@
   Complete project details at https://randomnerdtutorials.com  
 *********/
 #include <FS.h>                   //this needs to be first, or it all crashes and burns...
+#include <painlessMesh.h>
 #include <PubSubClient.h>
-#include <ESP8266WiFi.h>
+
+//#include <ESP8266WiFi.h>
 //#include <DNSServer.h>
 //#include <ESP8266WebServer.h>
+//#include <ESP8266mDNS.h>
 #include <WiFiManager.h>         // https://github.com/tzapu/WiFiManager
-
-#include <ESP8266mDNS.h>
 #include <WiFiClient.h>
-
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
+#include <Wire.h>
+#include "credential.h"
+
+
+#define   BRIDGE_NODE 1
+#define   HOSTNAME "MQTT_Bridge"
+#define   MESH_PREFIX     "whateveryouwant"
+#define   MESH_PASSWORD   "somethingSneaky"
+#define   MESH_PORT       5555
+#define   WIFI_CHANNEL    6 
 
 // Set web server port number to 80
 WiFiServer server(80);
@@ -37,49 +47,26 @@ char mqtt_server[50] = "ahmad-HP-G62-Notebook-PC.local";
 char mesh_name[10]="smarthome";
 char mesh_pwd[10]="smarthome";
 
+painlessMesh  mesh;
+IPAddress getlocalIP();
+IPAddress myIP(0,0,0,0);
+
+StaticJsonDocument<100> jsonload;
 
 WiFiClient wifiClient;
 
+void receivedCallback( const uint32_t &from, const String &msg );
 void mqttCallback(char* topic, byte* payload, unsigned int length);
+
+
 IPAddress getlocalIP();
 
 PubSubClient mqttClient(wifiClient);
-
-void setup() {mqtt_server, 1883, mqttCallback, 
+//mqtt_server, 1883, mqttCallback,
+void setup() {
   Serial.begin(115200);
   Serial.println();
   Serial.println("mounting FS...");
-
-  if (SPIFFS.begin()) {
-    Serial.println("mounted file system");
-    if (SPIFFS.exists("/config.json")) {
-      //file exists, reading and loading
-      Serial.println("reading config file");
-      File configFile = SPIFFS.open("/config.json", "r");
-      if (configFile) {
-        Serial.println("opened config file");
-        size_t size = configFile.size();
-        // Allocate a buffer to store contents of the file.
-        std::unique_ptr<char[]> buf(new char[size]);
-
-        configFile.readBytes(buf.get(), size);
-        DynamicJsonBuffer jsonBuffer;
-        JsonObject& json = jsonBuffer.parseObject(buf.get());
-        json.printTo(Serial);
-        if (json.success()) {
-          Serial.println("\nparsed json");
-
-          strcpy(mqtt_server, json["mqtt_server"]);
-          strcpy(mqtt_port, json["mqtt_port"]);
-          strcpy(dev_name, json["dev_name"]);
-        } else {
-          Serial.println("failed to load json config");
-        }
-      }
-    }
-  } else {
-    Serial.println("failed to mount FS");
-  }
 
   Serial.print("hello");
   //Serial.println(dev_name);
@@ -115,7 +102,7 @@ void setup() {mqtt_server, 1883, mqttCallback,
   
   // or use this for auto generated name ESP + ChipID
   //wifiManager.autoConnect();
-  if (!wifiManager.autoConnect("AutoConnectAP")) {
+  if (!wifiManager.makeAP("smart-node")) {
     Serial.println("failed to connect and hit timeout");
     delay(3000);
     //reset and try again, or maybe put it to deep sleep
@@ -123,20 +110,22 @@ void setup() {mqtt_server, 1883, mqttCallback,
     delay(5000);
   }
   // if you get here you have connected to the WiFi
-  Serial.println("Connected.");
-
+  String ssid;
+  String psw;
+  wifiManager.getWifiCredentials(ssid, psw);
+  
   strcpy(mqtt_server, custom_mqtt_server.getValue());
   strcpy(mqtt_port, custom_mqtt_port.getValue());
   strcpy(dev_name, custom_dev_name.getValue());
   
-  mqttClient.setServer(mqtt_server, int(mqtt_port));
-  mqttClient.setCallback(mqttCallback);
+  //mqttClient.setServer(mqtt_server, int(mqtt_port));
+  //mqttClient.setCallback(mqttCallback);
 
   if (shouldSaveConfig) {
     Serial.println("saving config");
        
-    DynamicJsonBuffer jsonBuffer;
-    JsonObject& json = jsonBuffer.createObject();
+    /*DynamicJsonDocument jsonBuffer;
+    JsonObject json = jsonBuffer.createObject();
     json["mqtt_server"] = mqtt_server;
     json["mqtt_port"] = mqtt_port;
     json["device name"] = dev_name;
@@ -149,22 +138,71 @@ void setup() {mqtt_server, 1883, mqttCallback,
     json.printTo(Serial);
     json.printTo(configFile);
     configFile.close();
-    //end save
+    //end save*/
   }
 
  // server.begin();
+  mqttClient.setServer(mqtt_server, 1883);
+  mqttClient.setCallback(mqttCallback);
+
+  mesh.setDebugMsgTypes( ERROR | STARTUP | CONNECTION );  // set before init() so that you can see startup messages
+
+  // Channel set to 6. Make sure to use the same channel for your mesh and for you other
+  // network (STATION_SSID)
+  mesh.init( MESH_PREFIX, MESH_PASSWORD, MESH_PORT, WIFI_AP_STA, WIFI_CHANNEL );
+  //mesh.onReceive(&receivedCallback);
+  mesh.onReceive(&receivedCallback);
+  
+
+  #ifdef BRIDGE_NODE
+  mesh.stationManual(ssid.c_str(), psw.c_str());
+  mesh.setHostname(HOSTNAME);
+  #endif
+  
 }
 void loop(){
 
+    mesh.update();
+    #ifdef BRIDGE_NODE
     mqttClient.loop();
+    #endif
+
+    /*mqttClient.loop();
     if (mqttClient.connect("painlessMeshClient")) {
-      mqttClient.publish("house/build","Ready hello world!");
+      mqttClient.publish("house","Ready hello world!");
       mqttClient.subscribe("painlessMesh/to/#");
     } 
     else{
       Serial.println("connection unsecuessful");
     }
+    */
+    
+    if(myIP != getlocalIP()){
+      myIP = getlocalIP();
+      Serial.println("My IP is " + myIP.toString());
+
+  
+  }
+  //  #ifdef BRIDGE_NODE
+    if (mqttClient.connect("painlessMeshClient")) {
+      mqttClient.publish("painlessMesh/from/gateway","Ready!");
+      mqttClient.subscribe("painlessMesh/to/#");
+    }
+    else{
+       Serial.println("connection unsecuessful");
+    }
+//    #endif
+  if (Serial.available()) {
+    // read the incoming byte:
+//    int incomingByte = Serial.read();
+
+    // say what you got:
+    Serial.print("I received: ");
+    Serial.write(Serial.read());
+  }
+  
 }
+
 
 void mqttCallback(char* topic, uint8_t* payload, unsigned int length) {
   char* cleanPayload = (char*)malloc(length+1);
@@ -176,6 +214,29 @@ void mqttCallback(char* topic, uint8_t* payload, unsigned int length) {
   String targetStr = String(topic).substring(16);
   Serial.print(msg);
 }
+
+
+void receivedCallback( const uint32_t &from, const String &msg ) {
+//  StaticJsonDocument<100> jsonload;
+  Serial.printf("bridge: Received from %u msg=%s\n", from, msg.c_str());
+//  DeserializationError error = deserializeJson(jsonload, msg);
+
+//  String value = jsonload["value"].as<String>();
+//  String item = jsonload["item"].as<String>();
+  
+  String topic = "painlessMesh/from/" + String(from);
+//  +"/" + String(item);
+//  mqttClient.publish(topic.c_str(), msg.c_str());
+//  if (isNumber(value))
+//  {
+//    mqttClient.publish(topic.c_str(), String(value).toInt());
+//  }
+//  mqttClient.publish(topic.c_str(), value.c_str());
+  mqttClient.publish(topic.c_str(), msg.c_str());
+  
+  jsonload.clear();
+}
+
 
 /*void loop(){
   WiFiClient client = server.available();   // Listen for incoming clients
@@ -271,3 +332,6 @@ void mqttCallback(char* topic, uint8_t* payload, unsigned int length) {
     Serial.println("");
   }
 }*/
+IPAddress getlocalIP() {
+  return IPAddress(mesh.getStationIP());
+}
