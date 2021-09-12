@@ -37,7 +37,7 @@ String output4State = "off";
 const int output5 = 2;
 const int output4 = 1;
 
-bool shouldSaveConfig=false;
+bool shouldSaveConfig = true;
 
 //char mqtt_server[40];
 
@@ -123,44 +123,44 @@ void setup() {
 
   //#ifdef BRIDGE_NODE
   if(BRIDGE_NODE)
-    mesh.stationManual("PTCL-1013", "03454899951");
+    mesh.stationManual(confi.ssid, confi.ssid_pwd);
 //    mesh.stationManual(ssid.c_str(), psw.c_str());
   mesh.setHostname(HOSTNAME);
   
 }
 void loop(){
-
-  if ( digitalRead(TRIGGER_PIN) == LOW ) {
-    //delay(5000);
-    if ( digitalRead(TRIGGER_PIN) == LOW )
-        ESP.reset();
-  }
-    mesh.update();
-   // #ifdef BRIDGE_NODE
+  mesh.update();
+  // #ifdef BRIDGE_NODE
    if(BRIDGE_NODE)
       mqttClient.loop();
-   // #endif
-    
+       
     if(myIP != getlocalIP()){
       myIP = getlocalIP();
       Serial.println("My IP is " + myIP.toString());
-    }
-  //  #ifdef BRIDGE_NODE
-    if (mqttClient.connect("painlessMeshClient")) {
-      mqttClient.publish("painlessMesh/from/gateway","Ready!");
-      mqttClient.subscribe("painlessMesh/to/#");
-    }
-    else{
-       Serial.println("connection unsecuessful");
+    
+    //  #ifdef BRIDGE_NODE
+      if (mqttClient.connect("painlessMeshClient")) {
+        mqttClient.publish("painlessMesh/from/gateway","Ready!");
+        mqttClient.subscribe("painlessMesh/to/#");
+      }
+      else{
+         Serial.println("connection unsecuessful");
+      }
     }
 //    #endif
+
   if (Serial.available()) {
     // read the incoming byte:
     // int incomingByte = Serial.read();
     // say what you got:
     Serial.print("I received: ");
     Serial.write(Serial.read());
-    } 
+  } 
+    if ( digitalRead(TRIGGER_PIN) == LOW ) {
+    //delay(5000);
+//    if ( digitalRead(TRIGGER_PIN) == LOW )
+        ESP.reset();
+  }
 }
 
 
