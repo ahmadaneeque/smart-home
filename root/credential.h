@@ -41,7 +41,7 @@ bool loadConfiguration(const char *filename, Config &config) {
       strlcpy(config.mqtt_port,  doc["mqtt_port"], sizeof(config.mqtt_port));         
       
       file.close();
-      return false;
+      return true;
     }
   } else {
     Serial.println("failed to mount FS");
